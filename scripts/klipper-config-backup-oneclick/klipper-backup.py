@@ -85,7 +85,7 @@ if __name__ == "__main__":
     base_local_path = "C:\\Users\\Joz\\Projects\\Klipper-personal-config"  # Base path on your Windows machine
     
     # Files to download
-    file_names = ["printer.cfg", "mainsail.cfg", "moonraker.conf", "telegram.conf"]
+    file_names = ["printer.cfg", "mainsail.cfg", "moonraker.conf", "telegram.conf", "macros.cfg"]
     
     # Get current date in format YYYY-MM-DD
     current_date = datetime.now().strftime("%Y-%m-%d")

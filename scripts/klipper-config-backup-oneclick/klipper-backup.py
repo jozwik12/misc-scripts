@@ -9,6 +9,7 @@
 import paramiko
 from scp import SCPClient
 import os
+import shutil
 from datetime import datetime
 import socket
 import time
@@ -25,19 +26,16 @@ def create_ssh_client(server, port, user, password):
         raise
     return client
 
-def download_files(server, port, user, password, remote_path, local_dir, file_names, max_retries=3, delay=3):
+def download_files(server, port, user, password, remote_path, local_dir, max_retries=3, delay=3):
     for attempt in range(max_retries):
         try:
             ssh = create_ssh_client(server, port, user, password)
             with SCPClient(ssh.get_transport()) as scp:
-                for file_name in file_names:
-                    remote_file = os.path.join(remote_path, file_name)
-                    local_file = os.path.join(local_dir, file_name)
-                    try:
-                        scp.get(remote_file, local_file)
-                        print(f"Downloaded {remote_file} to {local_file}")
-                    except FileNotFoundError:
-                        print(f"File {remote_file} not found on the remote server")
+                try:
+                    scp.get(remote_path, local_dir, recursive=True)
+                    print(f"Downloaded files from {remote_path} to {local_dir}")
+                except FileNotFoundError:
+                    print(f"Folder {remote_path} not found on the remote server")
             break  # Exit the retry loop if successful
         except socket.gaierror as e:
             print(f"Attempt {attempt + 1} failed: {e}")
@@ -66,8 +64,16 @@ def copy_folder(src, dst):
                         if not chunk:
                             break
                         f_dst.write(chunk)
-
     print(f"OrcaSlicer config copied to {dst}")
+
+def unpack_config_folder(dst):
+    src = dst + "\\config"
+    for filename in os.listdir(src):
+        source_path = os.path.join(src, filename)
+        destination_path = os.path.join(dst, filename)
+        shutil.move(source_path, destination_path)
+    os.rmdir(src)
+    print("Unpacked config folder")
 
 if __name__ == "__main__":
     # Load configuration from secrets.ini
@@ -84,9 +90,6 @@ if __name__ == "__main__":
     remote_path = "/home/joz/printer_data/config/"  # Path to the directory on the Linux machine
     base_local_path = "C:\\Users\\Joz\\Projects\\Klipper-personal-config"  # Base path on your Windows machine
     
-    # Files to download
-    file_names = ["printer.cfg", "mainsail.cfg", "moonraker.conf", "telegram.conf", "macros.cfg"]
-    
     # Get current date in format YYYY-MM-DD
     current_date = datetime.now().strftime("%Y-%m-%d")
     local_dir = os.path.join(base_local_path, current_date)
@@ -96,7 +99,10 @@ if __name__ == "__main__":
         os.makedirs(local_dir)
     
     # Download the specified files
-    download_files(server, port, user, password, remote_path, local_dir, file_names)
+    download_files(server, port, user, password, remote_path, local_dir)
+
+    # Unpack the config directory
+    unpack_config_folder(local_dir)
 
     # Copy OrcaSlicer config
     orca_slicer_source = "C:\\Users\\Joz\\AppData\\Roaming\\OrcaSlicer\\user"

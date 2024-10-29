@@ -15,6 +15,17 @@ import socket
 import time
 from configparser import ConfigParser
 
+def load_config(config_path):
+    config = ConfigParser()
+    config.read(config_path)
+    ssh_config = {
+        'server': config["SSH"]["server"],
+        'port': int(config["SSH"].get("port", 22)),
+        'user': config["SSH"]["user"],
+        'password': config["SSH"]["password"]
+    }
+    return ssh_config
+
 def create_ssh_client(server, port, user, password):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
@@ -26,91 +37,73 @@ def create_ssh_client(server, port, user, password):
         raise
     return client
 
-def download_files(server, port, user, password, remote_path, local_dir, max_retries=3, delay=3):
+def download_files(ssh_client, remote_path, local_dir, max_retries=3, delay=3):
     for attempt in range(max_retries):
         try:
-            ssh = create_ssh_client(server, port, user, password)
-            with SCPClient(ssh.get_transport()) as scp:
-                try:
-                    scp.get(remote_path, local_dir, recursive=True)
-                    print(f"Downloaded files from {remote_path} to {local_dir}")
-                except FileNotFoundError:
-                    print(f"Folder {remote_path} not found on the remote server")
-            break  # Exit the retry loop if successful
-        except socket.gaierror as e:
+            with SCPClient(ssh_client.get_transport()) as scp:
+                scp.get(remote_path, local_dir, recursive=True)
+            print(f"Downloaded files from {remote_path} to {local_dir}")
+            break
+        except (FileNotFoundError, socket.gaierror) as e:
             print(f"Attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                print(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
             else:
-                print("Maximum retries reached. Exiting.")
-                raise
+                raise Exception("Maximum retries reached. Exiting.")
+
+def download_file(ssh_client, remote_file, local_dir):
+    os.makedirs(local_dir, exist_ok=True)
+    local_path = os.path.join(local_dir, os.path.basename(remote_file))
+    with SCPClient(ssh_client.get_transport()) as scp:
+        scp.get(remote_file, local_path)
+    print(f"Downloaded file {remote_file} to {local_path}")
 
 def copy_folder(src, dst):
-    if not os.path.exists(dst):
-        os.makedirs(dst)
-    
+    os.makedirs(dst, exist_ok=True)
     for item in os.listdir(src):
         src_path = os.path.join(src, item)
         dst_path = os.path.join(dst, item)
-        
         if os.path.isdir(src_path):
             copy_folder(src_path, dst_path)
         else:
-            with open(src_path, "rb") as f_src:
-                with open(dst_path, "wb") as f_dst:
-                    while True:
-                        chunk = f_src.read(1024*1024)
-                        if not chunk:
-                            break
-                        f_dst.write(chunk)
-    print(f"OrcaSlicer config copied to {dst}")
+            shutil.copy2(src_path, dst_path)
+    print(f"Copied folder from {src} to {dst}")
 
 def unpack_config_folder(dst):
-    src = dst + "\\config"
+    src = os.path.join(dst, "config")
     for filename in os.listdir(src):
-        source_path = os.path.join(src, filename)
-        destination_path = os.path.join(dst, filename)
-        shutil.move(source_path, destination_path)
+        shutil.move(os.path.join(src, filename), os.path.join(dst, filename))
     os.rmdir(src)
     print("Unpacked config folder")
 
 if __name__ == "__main__":
-    # Load configuration from secrets.ini
-    config = ConfigParser()
-    config.read("D:\\Projects\\misc-scripts\\scripts\\klipper-config-backup-oneclick\\secrets.ini")
+    # Load configuration
+    config_path = "D:\\Projects\\misc-scripts\\scripts\\klipper-config-backup-oneclick\\secrets.ini"
+    ssh_config = load_config(config_path)
 
-    # SSH connection details
-    server = config["SSH"]["server"]
-    port = int(config["SSH"].get("port", 22))  # default SSH port
-    user = config["SSH"]["user"]
-    password = config["SSH"]["password"]
-    
-    # Paths
-    remote_path = "/home/joz/printer_data/config/"  # Path to the directory on the Linux machine
-    base_local_path = "D:\\Projects\\Klipper-personal-config"  # Base path on your Windows machine
-    
-    # Get current date in format YYYY-MM-DD
+    # Define paths
+    remote_config_path = "/home/joz/printer_data/config/"
+    local_base_path = "D:\\Projects\\Klipper-personal-config"
     current_date = datetime.now().strftime("%Y-%m-%d")
-    local_dir = os.path.join(base_local_path, current_date)
-    
-    # Ensure local_dir directory exists
-    if not os.path.exists(local_dir):
-        os.makedirs(local_dir)
-    
-    # Download the specified files
-    download_files(server, port, user, password, remote_path, local_dir)
+    local_dir = os.path.join(local_base_path, current_date)
 
-    # Unpack the config directory
+    os.makedirs(local_dir, exist_ok=True)
+
+    # Establish SSH connection
+    ssh_client = create_ssh_client(**ssh_config)
+
+    # Download directories
+    download_files(ssh_client, remote_config_path, local_dir)
     unpack_config_folder(local_dir)
 
     # Copy OrcaSlicer config
     orca_slicer_source = "C:\\Users\\Joz\\AppData\\Roaming\\OrcaSlicer\\user"
-    orca_slicer_destination = os.path.join(local_dir, "user")
-
-    if not os.path.exists(orca_slicer_destination):
-        os.makedirs(orca_slicer_destination)
-
+    orca_slicer_destination = os.path.join(local_dir, "OrcaSlicer\\user")
     copy_folder(orca_slicer_source, orca_slicer_destination)
+
+    # Download specific file from Spoolman
+    spoolman_remote_file = "/home/joz/.local/share/spoolman/spoolman.db"
+    spoolman_destination = os.path.join(local_dir, "Spoolman")
+    download_file(ssh_client, spoolman_remote_file, spoolman_destination)
 
     print(f"All files downloaded to {local_dir}")

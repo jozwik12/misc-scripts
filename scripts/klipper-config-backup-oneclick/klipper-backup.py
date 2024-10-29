@@ -78,7 +78,7 @@ def unpack_config_folder(dst):
 if __name__ == "__main__":
     # Load configuration from secrets.ini
     config = ConfigParser()
-    config.read("C:\\Users\\Joz\\Projects\\misc-scripts\\scripts\\klipper-config-backup-oneclick\\secrets.ini")
+    config.read("D:\\Projects\\misc-scripts\\scripts\\klipper-config-backup-oneclick\\secrets.ini")
 
     # SSH connection details
     server = config["SSH"]["server"]
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     
     # Paths
     remote_path = "/home/joz/printer_data/config/"  # Path to the directory on the Linux machine
-    base_local_path = "C:\\Users\\Joz\\Projects\\Klipper-personal-config"  # Base path on your Windows machine
+    base_local_path = "D:\\Projects\\Klipper-personal-config"  # Base path on your Windows machine
     
     # Get current date in format YYYY-MM-DD
     current_date = datetime.now().strftime("%Y-%m-%d")
